@@ -916,17 +916,39 @@ async function sSync(){if(!SY.db)return;if(SY.busy){SY.dirty=true;return}if(mdOp
   if(changedLocal){SY.applying=true;try{migrate();localStorage.setItem(KEY,JSON.stringify(db))}catch(e){}SY.applying=false;pulled.forEach(k=>{if(db[k]!==undefined)SY.base[k]=hsh(J(db[k]))});try{snap=null;audit()}catch(e){}if(me){const u=db.users.find(x=>x.u==me.u);if(u)me=u}try{applyLogo();syncXC()}catch(e){}if(me&&!mdOpen())render()}
   SY.fresh=false;SY.synced=true;sBase();
   synSet('ok','آخر مزامنة '+new Date().toLocaleTimeString('ar-EG',{hour:'2-digit',minute:'2-digit'}))}
- catch(e){console.error('sync',e);synSet('err',String(e&&e.message||e));if(e&&e.code=='quota_exceeded')toast('مساحة المزامنة امتلت، قلل الصور أو امسح بيانات قديمة');clearTimeout(SY.t);SY.t=setTimeout(sSync,15000)}
+ catch(e){console.error('sync',e);synSet('err',String(e&&e.message||e));if(e&&e.code=='permission-denied')toast('Firebase رافض الوصول — راجع الـ Rules');if(e&&e.code=='quota_exceeded')toast('مساحة المزامنة امتلت، قلل الصور أو امسح بيانات قديمة');clearTimeout(SY.t);SY.t=setTimeout(sSync,15000)}
  finally{if(held){try{SY.db.doc('fam/lock').acquire({holder:SY.dev,ttlMs:1000}).catch(()=>{})}catch(e){}}SY.busy=false;if(SY.dirty){clearTimeout(SY.t);SY.t=setTimeout(sSync,800)}}}
 const save0=save;save=function(){save0();if(SY.db&&!SY.applying){clearTimeout(SY.t);SY.t=setTimeout(sSync,1200)}};
-async function sInit(){if(!window.claude||!window.claude.use){synSet('off','المزامنة شغالة بس من رابط Claude');return}synSet('wait');
+async function sInit(){if(!window.claude||!window.claude.use){fbInit();return}synSet('wait');
  let d=null;try{d=await window.claude.use('db')}catch(e){}if(!d){synSet('off','المزامنة مش متاحة في العرض ده');return}SY.db=d;
  if(!SY.synced){const hasLocal=db.items.length||db.invoices.length||db.purchases.length||db.repairs.length||db.parties.length;SY.fresh=!hasLocal||isDemo()}
  await sSync();
  SY.unsub=SY.db.doc('fam/meta').onSnapshot(s=>{if(!s.exists)return;const m=s.data();if(m.dev===SY.dev)return;const ks=m.keys||{};if(Object.keys(ks).some(k=>ks[k].h!==SY.rb[k])){clearTimeout(SY.t);SY.t=setTimeout(sSync,300)}},e=>{synSet('err',e.code||'')})}
+
+/* ---------- Firebase sync (GitHub / any link outside Claude) ---------- */
+const FBC={apiKey:"AIzaSyDHumvD3dT4y280ZNxX75AuiwfIx1ihJA8",authDomain:"fam-tech-70589.firebaseapp.com",projectId:"fam-tech-70589",storageBucket:"fam-tech-70589.firebasestorage.app",messagingSenderId:"387549877706",appId:"1:387549877706:web:30772e5f7c5fa0070fab33"};
+const ldS=src=>new Promise((ok,no)=>{const x=document.createElement('script');x.src=src;x.onload=ok;x.onerror=()=>no(new Error('load '+src));document.head.appendChild(x)});
+const fbErr=x=>({'auth/invalid-credential':'الإيميل أو الباسورد غلط','auth/invalid-login-credentials':'الإيميل أو الباسورد غلط','auth/wrong-password':'الباسورد غلط','auth/user-not-found':'الإيميل ده مش متسجل في Firebase','auth/invalid-email':'الإيميل مكتوب غلط','auth/user-disabled':'الحساب ده متوقف','auth/too-many-requests':'محاولات كتير، استنى شوية وجرب تاني','auth/network-request-failed':'مفيش نت','auth/operation-not-allowed':'فعّل Email/Password من Authentication في Firebase'})[x&&x.code]||('خطأ: '+(x&&(x.code||x.message)||x));
+function fbHide(){const x=document.getElementById('fbl');if(x)x.remove()}
+function fbShow(){if(document.getElementById('fbl'))return;
+ document.body.insertAdjacentHTML('beforeend',`<div id="fbl" style="position:fixed;inset:0;z-index:60;background:radial-gradient(900px 360px at 50% -80px,#1d1038 0,#000 70%) no-repeat,#000;display:flex;align-items:center;justify-content:center;padding:24px;overflow:auto"><div class="lw"><div class="logo"><h1 style="font-size:42px">FAM <span class="tk">Tech</span></h1><p style="margin-bottom:22px">تسجيل دخول المزامنة<br><small style="font-size:13px;color:var(--mut)">مرة واحدة بس على كل جهاز — بالإيميل والباسورد المتسجلين في Firebase</small></p></div><label>الإيميل<input id="fbe" type="email" autocomplete="username" autocapitalize="none" dir="ltr"></label><label>الباسورد<input id="fbp" type="password" autocomplete="current-password" dir="ltr"></label><button class="btn w" id="fbb">دخول</button><div class="err" id="fbr"></div><button class="btn g w" id="fbs" style="margin-top:6px">اشتغل من غير مزامنة دلوقتي</button></div></div>`);
+ const b=document.getElementById('fbb'),r=document.getElementById('fbr');
+ b.onclick=async()=>{const e=document.getElementById('fbe').value.trim(),pw=document.getElementById('fbp').value;if(!e||!pw){r.textContent='اكتب الإيميل والباسورد';return}if(!SY.fb){r.textContent='مفيش نت — جرب تاني';return}b.disabled=true;r.textContent='';b.textContent='بيدخل…';try{await SY.fb.signInWithEmailAndPassword(e,pw)}catch(x){r.textContent=fbErr(x)}b.disabled=false;b.textContent='دخول'};
+ document.getElementById('fbp').onkeydown=e=>{if(e.key=='Enter')b.click()};
+ document.getElementById('fbs').onclick=()=>{try{sessionStorage.setItem('fb_skip','1')}catch(e){}fbHide();synSet('off','شغال محلي — دوس هنا عشان تتصل')}}
+async function fbInit(){synSet('wait','بيحمّل المزامنة');const B='https://www.gstatic.com/firebasejs/10.12.2/';
+ try{if(!window.firebase){await ldS(B+'firebase-app-compat.js');await ldS(B+'firebase-auth-compat.js');await ldS(B+'firebase-firestore-compat.js')}}catch(e){synSet('off','مفيش نت — شغال محلي، دوس هنا عشان تجرب تاني');SY.fbFail=1;return}
+ SY.fbFail=0;if(!firebase.apps.length)firebase.initializeApp(FBC);const au=firebase.auth(),fs=firebase.firestore();SY.fb=au;
+ au.onAuthStateChanged(async u=>{
+  if(u){fbHide();SY.email=u.email||'';if(SY.db)return;SY.db=fs;
+   if(!SY.synced){const hasLocal=db.items.length||db.invoices.length||db.purchases.length||db.repairs.length||db.parties.length;SY.fresh=!hasLocal||isDemo()}
+   await sSync();
+   if(SY.unsub)SY.unsub();
+   SY.unsub=fs.doc('fam/meta').onSnapshot(s=>{if(!s.exists)return;const m=s.data();if(m.dev===SY.dev)return;const ks=m.keys||{};if(Object.keys(ks).some(k=>ks[k].h!==SY.rb[k])){clearTimeout(SY.t);SY.t=setTimeout(sSync,300)}},e=>{synSet('err',e.code||'');if(e&&e.code=='permission-denied')toast('Firebase رافض الوصول — راجع الـ Rules')})}
+  else{if(SY.unsub){SY.unsub();SY.unsub=null}SY.db=null;SY.email='';synSet('off','مش متصل بالمزامنة — دوس هنا');let sk=null;try{sk=sessionStorage.getItem('fb_skip')}catch(e){}if(!sk)fbShow()}})}
 document.head.insertAdjacentHTML('beforeend','<style>.syn{position:fixed;top:calc(env(safe-area-inset-top,0px) + 6px);left:8px;z-index:50;font-size:11px;padding:3px 9px;border-radius:20px;background:#ffffff10;color:var(--mut);border:1px solid var(--bd);cursor:pointer}.syn.ok{color:#34d399;border-color:#34d39955}.syn.busy,.syn.wait{color:#f59e0b;border-color:#f59e0b55}.syn.err{color:#ef4444;border-color:#ef444455}</style>');
 document.body.insertAdjacentHTML('beforeend','<span id="syn" class="syn off">☁ محلي</span>');
-document.getElementById('syn').onclick=()=>{toast(SY.st=='off'?'المزامنة بتشتغل لما تفتح الصفحة من رابط Claude وانت مسجّل دخول':SY.st=='err'?'حصل خطأ في المزامنة، هتتعاد تلقائي':SY.msg||'المزامنة شغالة');if(SY.db)sSync()};
+document.getElementById('syn').onclick=()=>{if(!(window.claude&&window.claude.use)){if(SY.fbFail){fbInit();return}if(!SY.fb)return;if(!SY.db){try{sessionStorage.removeItem('fb_skip')}catch(e){}fbShow();return}sSync();ask('☁ متصل بالمزامنة<br><small style="color:var(--mut)">'+esc(SY.email)+(SY.msg?' · '+esc(SY.msg):'')+'</small><br><br>تسجيل خروج المزامنة من الجهاز ده؟',()=>{SY.fb.signOut()});return}toast(SY.st=='off'?'المزامنة بتشتغل لما تفتح الصفحة من رابط Claude وانت مسجّل دخول':SY.st=='err'?'حصل خطأ في المزامنة، هتتعاد تلقائي':SY.msg||'المزامنة شغالة');if(SY.db)sSync()};
 
 /* ---------- QA fixes ---------- */
 {const de1=A.de;A.de=id=>{const e=db.exp.find(x=>x.id==id);if(e&&e.rec&&typeof locked=='function'&&locked(e.date)){ask('المصروف ده متكرر وبدأ في شهر مقفول، مينفعش يتمسح. توقفه من الشهر ده وطالع؟',()=>{e.until=mshift(today().slice(0,7),-1);log('إيقاف مصروف متكرر: '+(e.desc||e.cat))});return}de1(id)}}
